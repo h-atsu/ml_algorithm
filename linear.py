@@ -5,7 +5,11 @@ import numpy as np
 
 
 def soft_th(x, lambda_):
-    return np.sign(x) * np.maximum(abs(x)-lambda_, 0)
+    return np.sign(x) * np.maximum(abs(x) - lambda_, 0)
+
+
+def sigmoid(x):
+    return 1 / (1 + np.exp(-x))
 
 
 class LinearRegression:
@@ -19,7 +23,7 @@ class LinearRegression:
         else:
             X_ = X
 
-        self.w_ = np.linalg.solve(X_.T@X_, X_.T@y)
+        self.w_ = np.linalg.solve(X_.T @ X_, X_.T @ y)
 
     def predict(self, X):
         if X.ndim == 1:
@@ -30,7 +34,7 @@ class LinearRegression:
         else:
             X_ = X
 
-        return X_@self.w_
+        return X_ @ self.w_
 
 
 class Ridge(LinearRegression):
@@ -45,7 +49,7 @@ class Ridge(LinearRegression):
             X_ = X
 
         I = np.eye(X_.shape[1])
-        self.w_ = np.linalg.solve(X_.T@X_ + self.lambda_*I, X_.T@y)
+        self.w_ = np.linalg.solve(X_.T @ X_ + self.lambda_ * I, X_.T @ y)
 
 
 class Lasso():
@@ -64,15 +68,15 @@ class Lasso():
         for i in range(self.max_iter):
             w_old = np.copy(w_)
             if self.fit_intercept == True:
-                w0 = (y - X@w_).sum() / n
+                w0 = (y - X @ w_).sum() / n
             for j in range(d):
                 w_sub_j = np.copy(w_).reshape(-1)
                 w_sub_j[j] = 0
-                s_j = X[:, j].T@(y - w0 - X@w_sub_j)
-                r = X[:, j]@X[:, j]
+                s_j = X[:, j].T @ (y - w0 - X @ w_sub_j)
+                r = X[:, j] @ X[:, j]
                 w_[j] = soft_th(s_j / r, self.lambda_)
 
-            eps = np.linalg.norm(w_old-w_, 1)
+            eps = np.linalg.norm(w_old - w_, 1)
             if eps < self.tol:
                 break
         if self.fit_intercept == True:
@@ -88,7 +92,7 @@ class Lasso():
         else:
             X_ = X
 
-        return X_@self.w_
+        return X_ @ self.w_
 
 
 class PolynomialFeatures:
@@ -120,19 +124,56 @@ class PolynomialRegression:
         return self.regressor.predict(X_poly)
 
 
+THRESHMIN = 1e-10
+
+
+class LogisticRegression:
+    def __init__(self, tol=0.001, max_iter=3, fit_intercept=True, random_seed=0):
+        self.tol = tol
+        self.max_iter = max_iter
+        self.fit_intercept = fit_intercept
+        self.random_state = np.random.RandomState(random_seed)
+        self.w_ = None
+
+    def fit(self, X, y):
+        if self.fit_intercept:
+            X_ = np.c_[np.ones(X.shape[0]), X]
+        else:
+            X_ = X
+
+        self.w_ = self.random_state.randn(X_.shape[1])
+        diff = np.inf
+        w_prev = self.w_
+        iter = 0
+        while diff > self.tol and iter < self.max_iter:
+            yhat = sigmoid(np.dot(X_, self.w_))
+            r = np.clip(yhat * (1 - yhat), THRESHMIN, np.inf)
+            XR = X_.T * r
+            XRX = np.dot(X_.T * r, X_)
+            w_prev = self.w_
+            b = np.dot(XR, np.dot(X_, self.w_) - 1 / r * (yhat - y))
+            self.w_ = np.linalg.solve(XRX, b)
+            diff = abs(w_prev - self.w_).mean()
+            iter += 1
+
+    def predict(self, X):
+        if self.fit_intercept:
+            X_ = np.c_[np.ones(X.shape[0]), X]
+        else:
+            X_ = X
+        yhat = sigmoid(np.dot(X_, self.w_))
+        return np.where(yhat > .5, 1, 0)
+
+
 ##### main ######################
-data = datasets.load_wine()
+data = datasets.load_breast_cancer()
 
 if __name__ == '__main__':
     X = data['data']
     y = data['target']
 
-    lr = LinearRegression()
+    lr = LogisticRegression()
     lr.fit(X, y)
-    print(lr.w_)
-    lr = Ridge(lambda_=0)
-    lr.fit(X, y)
-    print(lr.w_)
-    lr = Lasso(lambda_=0)
-    lr.fit(X, y)
-    print(lr.w_)
+    y_pred = lr.predict(X)
+    (y_pred == y).sum()
+    print(y)
